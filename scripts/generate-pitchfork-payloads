@@ -11,7 +11,7 @@ carlosを攻撃対象とする)を前提にデフォルト値を設定してい�
 carlosへのパスワード総当たりを続けられるようにする。
 
 使い方(最小):
-    bruteforce-reset-payloads --wordlist authentication-lab-passwords.txt
+    generate-pitchfork-payloads --wordlist authentication-lab-passwords.txt
 
 wordlistはBSCP_WORDLISTS_DIR(デフォルト: bscp/wordlists/)からファイル名で
 解決される。フルパスを渡した場合はそれをそのまま使う。
@@ -20,7 +20,7 @@ wordlistはBSCP_WORDLISTS_DIR(デフォルト: bscp/wordlists/)からファイ�
 スクリプト名のサブフォルダに生成される。
 
 使い方(カスタム):
-    bruteforce-reset-payloads \
+    generate-pitchfork-payloads \
         --reset-username wiener --reset-password peter \
         --target-username carlos --wordlist /path/to/passwords.txt \
         --interval 2 --out-dir ./payloads
@@ -34,7 +34,7 @@ import argparse
 import os
 import sys
 
-SCRIPT_NAME = "bruteforce-reset-payloads"
+SCRIPT_NAME = "generate-pitchfork-payloads"
 DEFAULT_OUTPUT_BASE = "/tmp/bscp"
 
 
@@ -72,7 +72,7 @@ def main():
     parser.add_argument("--interval", type=int, default=2,
                          help="何回連続で対象への試行を送った後にリセットログインを挟むか(デフォルト: 2)")
     parser.add_argument("--out-dir", default=None,
-                         help="出力先ディレクトリ(デフォルト: $BSCP_OUTPUT_DIR/bruteforce-reset-payloads/)")
+                         help="出力先ディレクトリ(デフォルト: $BSCP_OUTPUT_DIR/generate-pitchfork-payloads/)")
     args = parser.parse_args()
 
     if args.interval < 1:
@@ -91,7 +91,7 @@ def main():
     out_dir = resolve_output_dir(args.out_dir)
 
     # 実行前リマインド
-    print("=== bruteforce-reset-payloads ===")
+    print("=== generate-pitchfork-payloads ===")
     print(f"リセット用ログイン: {args.reset_username}:{args.reset_password}")
     print(f"攻撃対象          : {args.target_username}")
     print(f"読み込むwordlist  : {wordlist_path} ({len(candidates)}件)")
