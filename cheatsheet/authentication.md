@@ -82,6 +82,20 @@ Intruderではcurrent-passwordだけを総当たりする。
 Grep Matchで"New passwords do not match"を含む行を探す → その候補が正解
 ```
 
+#### password欄に配列を詰めて一括判定(brute-force対策の回避)
+ログインが認証情報をJSONで送っていて、`password`欄が文字列ではなく配列を受け付ける実装だと、1リクエストに全候補を詰めて送れる。サーバーは配列を全要素ループで照合し、どれか1つでも正解なら302を返す。brute-force対策は「リクエスト数」でしか数えていないため、何個詰めても1回扱いで制限をすり抜けられる
+```
+POST /login
+{"username":"carlos","password":["123456","password","qwerty", ...]}
+
+→ どれか1つが正解なら 302 でログイン成立(全候補を1リクエストで判定)
+→ そのレスポンスを右クリック → Show response in browser → URLをブラウザで開く
+  → carlosとしてログイン済みになる
+
+※候補リスト→JSON配列化は scripts/passwords-to-json が使える:
+  ./scripts/passwords-to-json -c -u carlos wordlists/authentication-lab-passwords.txt | pbcopy
+```
+
 ## Response
 
 ### エラーメッセージの文言差
